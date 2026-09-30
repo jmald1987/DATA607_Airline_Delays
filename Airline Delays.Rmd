@@ -1,0 +1,9 @@
+---
+title: "Airline Delays"
+author: "Johnny Maldonado"
+date: "`9/30/2026"
+output: html_document
+---
+## Introduction
+
+For this assignment,I am going to clean, restructure, and analyze airline arrival data for Alaska Airlines and America West across five destinations. I will use the readr package to import the CSV file, dplyr to remove empty rows, and tidyr to fill missing airline labels and reshape the data from wide to long format. This structure will allow me to compare delay percentages overall and by destination and examine how the distribution of flights affects the comparison between the airlines.
