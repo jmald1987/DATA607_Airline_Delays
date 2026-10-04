@@ -1,9 +1,144 @@
 ---
 title: "Airline Delays"
 author: "Johnny Maldonado"
-date: "`9/30/2026"
+date: "09/30/2026"
 output: html_document
 ---
+
 ## Introduction
 
-For this assignment,I am going to clean, restructure, and analyze airline arrival data for Alaska Airlines and America West across five destinations. I will use the readr package to import the CSV file, dplyr to remove empty rows, and tidyr to fill missing airline labels and reshape the data from wide to long format. This structure will allow me to compare delay percentages overall and by destination and examine how the distribution of flights affects the comparison between the airlines.
+For this assignment, I am going to clean, restructure, and analyze airline arrival data for Alaska Airlines and America West across five destinations. I will use the readr package to import the CSV file, dplyr to remove empty rows, and tidyr to fill missing airline labels and reshape the data from wide to long format. This structure will allow me to compare delay percentages overall and by destination and examine how the distribution of flights affects the comparison between the airlines.
+
+## Libraries
+
+I use readr to import the CSV, dplyr to clean and summarize the data, tidyr to fill labels and reshape the table, and `ggplot2` to make charts.
+
+```{r libraries, message=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Import the Data
+
+The data comes from the table supplied in the assignment, credited to Kaiser Fung's *Numbersense* (2013). The CSV keeps the original blank headings, missing airline labels, and empty separator row. I assign column names in R and using skip = 1 to skip the original header row.
+
+```{r import-data}
+airline_delays <- read_csv(
+  "https://raw.githubusercontent.com/jmald1987/DATA607_Airline_Delays/refs/heads/main/airport_delays.csv",
+  col_names = c("airline", "status", "Los Angeles", "Phoenix",
+                "San Diego", "San Francisco", "Seattle"),
+  skip = 1,
+  na = "",
+  show_col_types = FALSE
+)
+airline_delays
+```
+## Clean the Data
+
+The separator row has no arrival status, so I remove it with `filter()`. I then use `fill()` to copy each airline name down to its delayed-flight row. Missing airline names are labels to fill, not flight counts to replace with zero.
+```{r clean-data}
+clean_delays <- airline_delays %>%
+  filter(!is.na(status)) %>%
+  fill(airline, .direction = "down")
+clean_delays
+```
+## Restructure the Data
+
+I use `pivot_longer()` to turn the five city columns into a city column and a flight-count column. Each row now describes one airline, one arrival status, and one city. The result contains 20 rows: two airlines, two statuses, and five cities.
+
+```{r tidy-data}
+tidy_delays <- clean_delays %>%
+  pivot_longer(
+    cols = c("Los Angeles", "Phoenix", "San Diego", "San Francisco", "Seattle"),
+    names_to = "city",
+    values_to = "flights"
+  )
+tidy_delays
+```
+
+## Compare Overall Flight Counts and Delay Percentages
+
+First, I add the flight counts for each airline and arrival status. I then use `pivot_wider()` to place the on-time and delayed totals side by side for calculation. This summary table is separate from the tidy dataset above.
+
+```{r overall-summary}
+overall_delays <- tidy_delays %>%
+  group_by(airline, status) %>%
+  summarise(flights = sum(flights), .groups = "drop") %>%
+  pivot_wider(names_from = status, values_from = flights) %>%
+  rename(on_time = `on time`) %>%
+  mutate(
+    total_flights = on_time + delayed,
+    delay_percentage = round(delayed / total_flights * 100, 2)
+  )
+overall_delays
+```
+
+The delay percentage is delayed flights divided by total flights, multiplied by 100 and rounded to two decimal places. The overall percentage uses the total counts across all cities.
+Alaska had 501 delayed flights out of 3,775 flights, giving a delay percentage of **13.27%**. America West had 787 delayed flights out of 7,225 flights, giving a delay percentage of **10.89%**. America West had more delayed flights, but it also had more flights overall. Its lower delay percentage indicates better overall performance in this dataset.
+
+```{r overall-chart}
+ggplot(overall_delays, aes(x = airline, y = delay_percentage, fill = airline)) +
+  geom_col() +
+  labs(
+    title = "Overall Delay Percentages",
+    x = "Airline",
+    y = "Delayed Flights (%)",
+       fill = "Airline"
+  )
+```
+## Compare Delay Percentages by City
+
+I repeat the calculation with city included in the grouping. This allows me to compare the airlines within the same destination.
+
+```{r city-summary}
+city_delays <- tidy_delays %>%
+  group_by(airline, city, status) %>%
+  summarise(flights = sum(flights), .groups = "drop") %>%
+  pivot_wider(names_from = status, values_from = flights) %>%
+  rename(on_time = `on time`) %>%
+  mutate(
+    total_flights = on_time + delayed,
+    delay_percentage = round(delayed / total_flights * 100, 2)
+  )
+city_delays
+```
+```{r city-chart, fig.width=9}
+ggplot(city_delays, aes(x = city, y = delay_percentage, fill = airline)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Delay Percentages by City",
+    x = "City",
+    y = "Delayed Flights (%)",
+    fill = "Airline"
+  )
+```
+
+Alaska has a lower delay percentage in every city. For example, in Los Angeles, Alaska's delay percentage is **11.09%**, compared with **14.43%** for America West. In Phoenix, the percentages are **5.15%** and **7.90%**, respectively. Both airlines have their lowest delay percentage in Phoenix and their highest in San Francisco.
+
+## Explain the Difference Between Overall and City Results
+
+To understand why the comparison changes, I calculate the percentage of each airline's flights going to each city. Within each airline, `sum(total_flights)` gives that airline's total across all five cities.
+
+```{r flight-distribution}
+flight_distribution <- city_delays %>%
+  group_by(airline) %>%
+  mutate(
+    percentage_of_airline_flights = round(total_flights / sum(total_flights) * 100, 2)
+  ) %>%
+  ungroup() %>%
+  select(airline, city, total_flights, percentage_of_airline_flights)
+flight_distribution
+```
+
+America West sends **72.73%** of its flights to Phoenix, where both airlines have relatively low delay percentages. Alaska sends **56.85%** of its flights to Seattle, where both airlines have higher delay percentages than in Phoenix.
+The overall percentages are influenced by how many flights each airline has in each city. America West benefits in the overall comparison from having so many flights to Phoenix. Alaska performs better within every city, but its flights are concentrated differently.
+
+## Conclusion
+
+America West has the lower overall delay percentage, but Alaska has the lower delay percentage in all five cities. The difference is explained by the distribution of flights across destinations. This analysis shows why it is useful to examine both overall percentages and city-level percentages before comparing airline performance.
+
+## Reference
+
+Fung, Kaiser. *Numbersense*. McGraw Hill, 2013. Data table reproduced in the assignment handout.
